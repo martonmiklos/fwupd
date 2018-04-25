@@ -44,6 +44,7 @@ BuildRequires: libsoup-devel >= %{libsoup_version}
 BuildRequires: polkit-devel >= 0.103
 BuildRequires: sqlite-devel
 BuildRequires: gpgme-devel
+BuildRequires: libqmi-devel
 BuildRequires: systemd >= %{systemd_version}
 BuildRequires: libarchive-devel
 BuildRequires: gobject-introspection-devel

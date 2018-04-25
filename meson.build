@@ -249,6 +249,10 @@ if get_option('plugin_uefi')
   endif
 endif
 
+if get_option('plugin_qmi')
+  libqmi = dependency('qmi-glib', version : '>= 1.20.0')
+endif
+
 if get_option('plugin_dell')
   libsmbios_c = dependency('libsmbios_c', version : '>= 2.4.0')
   efivar = dependency('efivar')

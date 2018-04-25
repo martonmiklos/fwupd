@@ -1,0 +1,3 @@
+# Sierra AirPrime Mc8355
+[DeviceInstanceId=USB\VID_1199&PID_9011]
+Plugin = qmi
