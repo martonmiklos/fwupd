@@ -93,38 +93,17 @@ parts:
       - -lib/girepository-1.0
       - -lib/pkgconfig
       - -share/
-  libqmi:
-    plugin: autotools
-    source: https://gitlab.freedesktop.org/mobile-broadband/libqmi
-    source-type: git
-    #not yet tagged
-    #source-tag: 1.21.4
-    source-depth: 1
-    prime:
-      - -include
-      - -bin
-      - -share
-      - -libexec
-      - -lib/*.*a
-      - -lib/pkgconfig
-  libmbim:
-    plugin: autotools
-    source: https://gitlab.freedesktop.org/mobile-broadband/libmbim
-    source-type: git
-    #not yet tagged
-    #source-tag: 1.17.4
-    source-depth: 1
-    prime:
-      - -include
-      - -bin
-      - -share
-      - -libexec
-      - -lib/*.*a
-      - -lib/pkgconfig
+  # this is for the library only, we don't care about the daemon "in-snap"
   modemmanager:
     plugin: autotools
     source: https://gitlab.freedesktop.org/mobile-broadband/ModemManager.git
-    after: [libmbim, libqmi, gudev, gettext]
+    #not yet tagged
+    #source-tag: 1.10.0
+    after: [gudev, gettext]
+    # build without these; system daemon needs them
+    configflags:
+      - --without-mbim
+      - --withiout-qmi
     prime:
       - -include
       - -etc
