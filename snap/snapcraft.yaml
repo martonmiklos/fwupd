@@ -103,7 +103,7 @@ parts:
     # build without these; system daemon needs them
     configflags:
       - --without-mbim
-      - --withiout-qmi
+      - --without-qmi
     prime:
       - -include
       - -etc
