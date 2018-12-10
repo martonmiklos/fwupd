@@ -23,14 +23,6 @@ struct _FuMmDevice {
 
 G_DEFINE_TYPE (FuMmDevice, fu_mm_device, FU_TYPE_DEVICE)
 
-static const gchar *
-_mm_modem_firmware_update_method_to_string (MMModemFirmwareUpdateMethod kind)
-{
-	if (kind == MM_MODEM_FIRMWARE_UPDATE_METHOD_FASTBOOT)
-		return "fastboot";
-	return NULL;
-}
-
 static void
 fu_mm_device_to_string (FuDevice *device, GString *str)
 {
@@ -41,7 +33,7 @@ fu_mm_device_to_string (FuDevice *device, GString *str)
 	g_string_append_printf (str, "    at-port:\t\t\t%s\n",
 				self->detach_port_at);
 	g_string_append_printf (str, "    detach-kind:\t\t%s\n",
-				_mm_modem_firmware_update_method_to_string (self->detach_method));
+				mm_modem_firmware_update_method_get_string (self->detach_method));
 }
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(MMFirmwareUpdateSettings, g_object_unref)
@@ -85,7 +77,7 @@ fu_mm_device_probe (FuDevice *device, GError **error)
 			     FWUPD_ERROR,
 			     FWUPD_ERROR_NOT_SUPPORTED,
 			     "modem detach method %s not supported",
-			     _mm_modem_firmware_update_method_to_string (self->detach_method));
+			     mm_modem_firmware_update_method_get_string (self->detach_method));
 		return FALSE;
 	}
 
