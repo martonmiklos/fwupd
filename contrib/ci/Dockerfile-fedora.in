@@ -7,7 +7,7 @@ RUN echo fubar > /etc/machine-id
 RUN dnf install -y dnf-utils
 RUN dnf config-manager --add-repo https://people.freedesktop.org/~hughsient/fedora/utopia.repo
 RUN dnf --enablerepo=updates-testing -y update
-RUN dnf install -y https://kojipkgs.fedoraproject.org//packages/libxmlb/0.1.5/1.fc29/x86_64/libxmlb-0.1.5-1.fc29.x86_64.rpm https://kojipkgs.fedoraproject.org//packages/libxmlb/0.1.5/1.fc29/x86_64/libxmlb-devel-0.1.5-1.fc29.x86_64.rpm
+RUN dnf install -y libxmlb-devel
 RUN echo fubar > /etc/machine-id
 %%%INSTALL_DEPENDENCIES_COMMAND%%%
 RUN mkdir /build
