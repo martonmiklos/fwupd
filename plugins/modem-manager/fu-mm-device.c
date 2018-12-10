@@ -11,27 +11,23 @@
 #include "fu-io-channel.h"
 #include "fu-mm-device.h"
 
-typedef enum {
-	FU_MM_DEVICE_DETACH_KIND_UNKNOWN,
-	FU_MM_DEVICE_DETACH_KIND_QFASTBOOT,
-	FU_MM_DEVICE_DETACH_KIND_LAST
-} FuMmDeviceDetachKind;
-
 struct _FuMmDevice {
-	FuDevice		 parent_instance;
-	MMModem			*modem;
-	FuMmDeviceDetachKind	 detach_kind;
-	FuIOChannel		*io_channel;
-	gchar			*device_port_at;
+	FuDevice			 parent_instance;
+	FuIOChannel			*io_channel;
+	MMManager			*manager;
+	MMObject			*omodem;
+	MMModemFirmwareUpdateMethod	 detach_method;
+	gchar				*detach_fastboot_at;
+	gchar				*detach_port_at;
 };
 
 G_DEFINE_TYPE (FuMmDevice, fu_mm_device, FU_TYPE_DEVICE)
 
 static const gchar *
-fu_mm_device_detach_kind_to_string (FuMmDeviceDetachKind kind)
+_mm_modem_firmware_update_method_to_string (MMModemFirmwareUpdateMethod kind)
 {
-	if (kind == FU_MM_DEVICE_DETACH_KIND_QFASTBOOT)
-		return "qfastboot";
+	if (kind == MM_MODEM_FIRMWARE_UPDATE_METHOD_FASTBOOT)
+		return "fastboot";
 	return NULL;
 }
 
@@ -41,43 +37,68 @@ fu_mm_device_to_string (FuDevice *device, GString *str)
 	FuMmDevice *self = FU_MM_DEVICE (device);
 	g_string_append (str, "  FuMmDevice:\n");
 	g_string_append_printf (str, "    path:\t\t\t%s\n",
-				mm_modem_get_path (self->modem));
+				mm_object_get_path (self->omodem));
 	g_string_append_printf (str, "    at-port:\t\t\t%s\n",
-				self->device_port_at);
+				self->detach_port_at);
 	g_string_append_printf (str, "    detach-kind:\t\t%s\n",
-				fu_mm_device_detach_kind_to_string (self->detach_kind));
+				_mm_modem_firmware_update_method_to_string (self->detach_method));
 }
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(MMFirmwareUpdateSettings, g_object_unref)
 
 static gboolean
 fu_mm_device_probe (FuDevice *device, GError **error)
 {
 	FuMmDevice *self = FU_MM_DEVICE (device);
+	MMModemFirmware *modem_fw;
+	MMModem *modem = mm_object_peek_modem (self->omodem);
 	MMModemPortInfo *ports = NULL;
 	guint n_ports = 0;
+	g_autoptr(MMFirmwareUpdateSettings) fw_update_settings = NULL;
 
-#if MM_CHECK_VERSION(1,9,999)
-	/* FIXME: https://gitlab.freedesktop.org/mobile-broadband/ModemManager/issues/97 */
-	if (mm_modem_get_firmware_update_method_FIXME (self->modem) == NULL) {
+	/* find out what detach method we should use */
+	modem_fw = mm_object_peek_modem_firmware (self->omodem);
+	fw_update_settings = mm_modem_firmware_get_update_settings (modem_fw);
+	self->detach_method = mm_firmware_update_settings_get_method (fw_update_settings);
+	if (self->detach_method == MM_MODEM_FIRMWARE_UPDATE_METHOD_UNKNOWN) {
 		g_set_error_literal (error,
 				     FWUPD_ERROR,
 				     FWUPD_ERROR_NOT_SUPPORTED,
-				     "modem does not support firmware updates");
+				     "modem cannot be put in programming mode");
 		return FALSE;
 	}
-	self->detach_kind = FU_MM_DEVICE_DETACH_KIND_UNKNOWN; //FIXME
-#else
-	self->detach_kind = FU_MM_DEVICE_DETACH_KIND_QFASTBOOT;
-#endif
 
-	fu_device_set_physical_id (device, mm_modem_get_device (self->modem));
-	fu_device_set_vendor (device, mm_modem_get_manufacturer (self->modem));
-	fu_device_set_name (device, mm_modem_get_model (self->modem));
-	fu_device_set_version (device, mm_modem_get_revision (self->modem));
-	fu_device_set_physical_id (device, mm_modem_get_device (self->modem));
-	fu_device_add_guid (device, mm_modem_get_device_identifier (self->modem));
+	/* various fastboot commands */
+	if (self->detach_method == MM_MODEM_FIRMWARE_UPDATE_METHOD_FASTBOOT) {
+		const gchar *tmp;
+		tmp = mm_firmware_update_settings_get_fastboot_at (fw_update_settings);
+		if (tmp == NULL) {
+			g_set_error_literal (error,
+					     FWUPD_ERROR,
+					     FWUPD_ERROR_NOT_SUPPORTED,
+					     "modem does not set fastboot command");
+			return FALSE;
+		}
+		self->detach_fastboot_at = g_strdup (tmp);
+	} else {
+		g_set_error (error,
+			     FWUPD_ERROR,
+			     FWUPD_ERROR_NOT_SUPPORTED,
+			     "modem detach method %s not supported",
+			     _mm_modem_firmware_update_method_to_string (self->detach_method));
+		return FALSE;
+	}
+
+	/* add properties to fwupd device */
+	fu_device_set_physical_id (device, mm_modem_get_device (modem));
+	fu_device_set_vendor (device, mm_modem_get_manufacturer (modem));
+	fu_device_set_name (device, mm_modem_get_model (modem));
+	fu_device_set_version (device, mm_modem_get_revision (modem));
+	fu_device_set_physical_id (device, mm_modem_get_device (modem));
+	fu_device_add_guid (device, mm_modem_get_device_identifier (modem));
 
 	/* look for the AT port */
-	if (!mm_modem_get_ports (self->modem, &ports, &n_ports)) {
+	if (!mm_modem_get_ports (modem, &ports, &n_ports)) {
 		g_set_error_literal (error,
 				     FWUPD_ERROR,
 				     FWUPD_ERROR_NOT_SUPPORTED,
@@ -86,14 +107,14 @@ fu_mm_device_probe (FuDevice *device, GError **error)
 	}
 	for (guint i = 0; i < n_ports; i++) {
 		if (ports[i].type == MM_MODEM_PORT_TYPE_AT) {
-			self->device_port_at = g_strdup_printf ("/dev/%s", ports[i].name);
+			self->detach_port_at = g_strdup_printf ("/dev/%s", ports[i].name);
 			break;
 		}
 	}
 	mm_modem_port_info_array_free (ports, n_ports);
 
 	/* this is required for detaching */
-	if (self->device_port_at == NULL) {
+	if (self->detach_port_at == NULL) {
 		g_set_error_literal (error,
 				     FWUPD_ERROR,
 				     FWUPD_ERROR_NOT_SUPPORTED,
@@ -105,7 +126,7 @@ fu_mm_device_probe (FuDevice *device, GError **error)
 }
 
 static gboolean
-fu_mm_device_cmd (FuMmDevice *self, const gchar *cmd, GError **error)
+fu_mm_device_at_cmd (FuMmDevice *self, const gchar *cmd, GError **error)
 {
 	const gchar *buf;
 	gsize bufsz = 0;
@@ -156,7 +177,7 @@ static gboolean
 fu_mm_device_io_open (FuMmDevice *self, GError **error)
 {
 	/* open device */
-	self->io_channel = fu_io_channel_new_file (self->device_port_at, error);
+	self->io_channel = fu_io_channel_new_file (self->detach_port_at, error);
 	if (self->io_channel == NULL)
 		return FALSE;
 
@@ -186,9 +207,9 @@ fu_mm_device_detach_qfastboot (FuDevice *device, GError **error)
 					    error);
 	if (locker == NULL)
 		return FALSE;
-	if (!fu_mm_device_cmd (self, "AT", error))
+	if (!fu_mm_device_at_cmd (self, "AT", error))
 		return FALSE;
-	if (!fu_mm_device_cmd (self, "AT+QFASTBOOT", error)) {
+	if (!fu_mm_device_at_cmd (self, self->detach_fastboot_at, error)) {
 		g_prefix_error (error, "rebooting into fastboot not supported: ");
 		return FALSE;
 	}
@@ -201,34 +222,32 @@ fu_mm_device_detach_qfastboot (FuDevice *device, GError **error)
 static gboolean
 fu_mm_device_inhibit (FuMmDevice *self, GError **error)
 {
-#if MM_CHECK_VERSION(1,9,999)
-	//FIXME: prevent NM from activating the modem
-	//https://gitlab.freedesktop.org/mobile-broadband/ModemManager/issues/98
-	if (!mm_modem_inhibit_sync (self->modem, NULL, error))
-		return FALSE;
-#else
-	/* disable modem */
-	if (!mm_modem_disable_sync (self->modem, NULL, error))
-		return FALSE;
-#endif
+	MMModem *modem = mm_object_peek_modem (self->omodem);
 
-	/* success */
+	/* prevent NM from activating the modem */
+	g_debug ("inhibit %s", mm_modem_get_device (modem));
+	if (!mm_manager_inhibit_device_sync (self->manager,
+					     mm_modem_get_device (modem),
+					     NULL, error))
+		return FALSE;
+
+	/* success: the device will disappear */
 	return TRUE;
 }
 
 static gboolean
 fu_mm_device_uninhibit (FuMmDevice *self, GError **error)
 {
-#if MM_CHECK_VERSION(1,9,999)
-	//FIXME: allow NM from activating the modem
-	if (!mm_modem_uninhibit_sync (self->modem, NULL, error))
-		return FALSE;
-#else
-	/* enable modem */
-	if (!mm_modem_enable_sync (self->modem, NULL, error))
-		return FALSE;
-#endif
+	MMModem *modem = mm_object_peek_modem (self->omodem);
 
+	/* allow NM to activate the modem */
+	g_debug ("uninhibit %s", mm_modem_get_device (modem));
+	if (!mm_manager_uninhibit_device_sync (self->manager,
+					       mm_modem_get_device (modem),
+					       NULL, error))
+		return FALSE;
+
+	/* success: the device will re-appear in a few seconds */
 	return TRUE;
 }
 
@@ -247,10 +266,10 @@ fu_mm_device_detach (FuDevice *device, GError **error)
 		return FALSE;
 
 	/* fastboot */
-	if (self->detach_kind == FU_MM_DEVICE_DETACH_KIND_QFASTBOOT)
+	if (self->detach_method == MM_MODEM_FIRMWARE_UPDATE_METHOD_FASTBOOT)
 		return fu_mm_device_detach_qfastboot (device, error);
 
-	/* shouldn't get here ideally */
+	/* should not get here */
 	g_set_error_literal (error,
 			     FWUPD_ERROR,
 			     FWUPD_ERROR_NOT_SUPPORTED,
@@ -271,8 +290,10 @@ static void
 fu_mm_device_finalize (GObject *object)
 {
 	FuMmDevice *self = FU_MM_DEVICE (object);
-	g_object_unref (self->modem);
-	g_free (self->device_port_at);
+	g_object_unref (self->manager);
+	g_object_unref (self->omodem);
+	g_free (self->detach_fastboot_at);
+	g_free (self->detach_port_at);
 	G_OBJECT_CLASS (fu_mm_device_parent_class)->finalize (object);
 }
 
@@ -288,9 +309,10 @@ fu_mm_device_class_init (FuMmDeviceClass *klass)
 }
 
 FuMmDevice *
-fu_mm_device_new (MMModem *modem)
+fu_mm_device_new (MMManager *manager, MMObject *omodem)
 {
 	FuMmDevice *self = g_object_new (FU_TYPE_MM_DEVICE, NULL);
-	self->modem = g_object_ref (modem);
+	self->manager = g_object_ref (manager);
+	self->omodem = g_object_ref (omodem);
 	return self;
 }

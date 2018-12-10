@@ -13,9 +13,6 @@
 
 #include "fu-mm-device.h"
 
-/* we need a new runtime version to support at+qfastboot */
-#define FU_PLUGIN_MODEM_MANAGER_REQUIRED_VERSION	"1.9.1"
-
 struct FuPluginData {
 	MMManager	*manager;
 };
@@ -23,11 +20,12 @@ struct FuPluginData {
 static void
 fu_plugin_mm_device_add (FuPlugin *plugin, MMObject *modem)
 {
+	FuPluginData *priv = fu_plugin_get_data (plugin);
 	const gchar *object_path = mm_object_get_path (modem);
 	g_autoptr(FuMmDevice) dev = NULL;
 	if (fu_plugin_cache_lookup (plugin, object_path) != NULL)
 		return;
-	dev = fu_mm_device_new (mm_object_peek_modem (modem));
+	dev = fu_mm_device_new (priv->manager, modem);
 	if (!fu_device_probe (FU_DEVICE (dev), NULL))
 		return;
 	fu_plugin_device_add (plugin, FU_DEVICE (dev));
@@ -72,7 +70,7 @@ gboolean
 fu_plugin_startup (FuPlugin *plugin, GError **error)
 {
 	FuPluginData *priv = fu_plugin_get_data (plugin);
-	const gchar *version = FU_PLUGIN_MODEM_MANAGER_REQUIRED_VERSION;
+	const gchar *version;
 	g_autoptr(GDBusConnection) connection = NULL;
 
 	connection = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, error);
@@ -83,16 +81,13 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 					     NULL, error);
 	if (priv->manager == NULL)
 		return FALSE;
-#if MM_CHECK_VERSION(1,9,1)
 	version = mm_manager_get_version (priv->manager);
-#endif
-	if (fu_common_vercmp (version, FU_PLUGIN_MODEM_MANAGER_REQUIRED_VERSION) < 0) {
+	if (fu_common_vercmp (version, MM_REQUIRED_VERSION) < 0) {
 		g_set_error (error,
 			     FWUPD_ERROR,
 			     FWUPD_ERROR_NOT_SUPPORTED,
 			     "ModemManager too old, got %s, need %s",
-			     version,
-			     FU_PLUGIN_MODEM_MANAGER_REQUIRED_VERSION);
+			     version, MM_REQUIRED_VERSION);
 		return FALSE;
 	}
 
