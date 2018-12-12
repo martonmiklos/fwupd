@@ -24,6 +24,13 @@
 #include <string.h>
 
 #include "fu-plugin-vfuncs.h"
+#include "libflashrom.h"
+
+#define SELFCHECK_TRUE 1
+
+struct flashrom_flashctx *flashctx = NULL;
+struct flashrom_layout *layout = NULL;
+struct flashrom_programmer *flashprog = NULL;
 
 struct FuPluginData {
 	gchar			*flashrom_fn;
@@ -51,6 +58,13 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 
 	/* we need flashrom from the host system */
 	data->flashrom_fn = fu_common_find_program_in_path ("flashrom", &error_local);
+	if (flashrom_init(SELFCHECK_TRUE)) {
+		g_error ("Flashrom initialization error");
+		return FALSE;
+	}
+
+	/* TODO: callback_implementation */
+	//flashrom_set_log_callback((flashrom_log_callback *)&flashrom_print_cb);
 
 	/* search for devices */
 	hwids = fu_plugin_get_hwids (plugin);
@@ -144,17 +158,30 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 	if (!fu_common_mkdir_parent (firmware_orig, error))
 		return FALSE;
 	if (!g_file_test (firmware_orig, G_FILE_TEST_EXISTS)) {
-		const gchar *argv[] = {
-			data->flashrom_fn,
-			"--programmer", "internal:laptop=force_I_want_a_brick",
-			"--read", firmware_orig,
-			"--verbose", NULL };
-		if (!fu_common_spawn_sync ((const gchar * const *) argv,
-					   fu_plugin_flashrom_read_cb, device,
-					   NULL, error)) {
-			g_prefix_error (error, "failed to get original firmware: ");
+		if (flashrom_programmer_init(&flashprog, "internal", NULL)) {
+			g_error ("Error: Programmer initialization failed.");
 			return FALSE;
 		}
+
+		if (flashrom_flash_probe(&flashctx, flashprog, NULL)) {
+			g_error ("Error: Flash probe failed.");
+			return FALSE;
+		}
+		const size_t flash_size = flashrom_flash_getsize(flashctx);
+		uint8_t *newcontents = malloc(flash_size);
+		if (!newcontents) {
+			g_error ("Error: Out of memory.");
+			return FALSE;
+		}
+
+		// TODO: callback implementation
+		if(flashrom_image_read(flashctx, newcontents, flash_size)) {
+			//g_prefix_error (error, "failed to get original firmware: ");
+			g_error ("Failed to get original firmware.");
+			return FALSE;
+		}
+		write_buf_to_file(newcontents, flash_size, firmware_orig);
+		g_free(newcontents);
 	}
 
 	return TRUE;
@@ -170,11 +197,6 @@ fu_plugin_update (FuPlugin *plugin,
 	FuPluginData *data = fu_plugin_get_data (plugin);
 	g_autofree gchar *firmware_fn = NULL;
 	g_autofree gchar *tmpdir = NULL;
-	const gchar *argv[] = {
-		data->flashrom_fn,
-		"--programmer", "internal:laptop=force_I_want_a_brick",
-		"--write", "xxx",
-		"--verbose", NULL };
 
 	/* write blob to temp location */
 	tmpdir = g_dir_make_tmp ("fwupd-XXXXXX", error);
@@ -184,18 +206,57 @@ fu_plugin_update (FuPlugin *plugin,
 	if (!fu_common_set_contents_bytes (firmware_fn, blob_fw, error))
 		return FALSE;
 
-	/* use flashrom to write image */
-	argv[4] = firmware_fn;
-	if (!fu_common_spawn_sync ((const gchar * const *) argv,
-				   fu_plugin_flashrom_write_cb, device,
-				   NULL, error)) {
-		g_prefix_error (error, "failed to write firmware: ");
+	if (flashrom_programmer_init(&flashprog, "internal", NULL)) {
+		g_error ("Error: Programmer initialization failed.");
+		return FALSE;
+	}
+
+	if (flashrom_flash_probe(&flashctx, flashprog, NULL)) {
+		g_error ("Error: Flash probe failed.");
+		return FALSE;
+	}
+
+	flashrom_flag_set(flashctx, FLASHROM_FLAG_VERIFY_AFTER_WRITE, TRUE);
+
+	if (flashrom_layout_read_from_ifd(&layout, flashctx, NULL, 0)) {
+		g_error ("Error: Reading layout from Intel ICH descriptor failed.");
+		return FALSE;
+	}
+
+	/* Include bios region for safety reasons */
+	if (flashrom_layout_include_region(layout, "bios")) {
+		g_error ("Error: Invalid region name.");
+		return FALSE;
+	}
+
+	flashrom_layout_set(flashctx, layout);
+
+	const size_t flash_size = flashrom_flash_getsize(flashctx);
+
+	uint8_t *newcontents = malloc(flash_size);
+	if (!newcontents) {
+		g_error ("Error: Out of memory.");
+		return FALSE;
+	}
+
+	if (read_buf_from_file(newcontents, flash_size, firmware_fn)) {
+		free(newcontents);
+		return FALSE;
+	}
+
+	if (flashrom_image_write(flashctx, newcontents, flash_size, NULL)) {
+		g_error ("Error: Image write failed.");
 		return FALSE;
 	}
 
 	/* delete temp location */
 	if (!fu_common_rmtree (tmpdir, error))
 		return FALSE;
+
+	g_free(newcontents);
+	flashrom_layout_release(layout);
+	flashrom_programmer_shutdown(flashprog);
+	flashrom_flash_release(flashctx);
 
 	/* success */
 	return TRUE;
