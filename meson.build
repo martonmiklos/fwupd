@@ -269,6 +269,12 @@ if get_option('plugin_thunderbolt')
   conf.set('HAVE_THUNDERBOLT', '1')
 endif
 
+if get_option('plugin_flashrom')
+  flashrom = find_program('flashrom', required: false)
+  libflashrom = cc.find_library('libflashrom', required: false)
+  conf.set('HAVE_FLASHROM', '1')
+endif
+
 if get_option('systemd')
   systemd = dependency('systemd', version : '>= 211')
   conf.set('HAVE_SYSTEMD' , '1')
