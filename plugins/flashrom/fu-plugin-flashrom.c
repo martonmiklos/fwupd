@@ -194,7 +194,13 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 			return FALSE;
 		}
 
-		write_buf_to_file(newcontents, flash_size, firmware_orig);
+		if (write_buf_to_file(newcontents, flash_size, firmware_orig) {
+			g_set_error (error,
+				FWUPD_ERROR,
+				FWUPD_ERROR_NOT_SUPPORTED,
+				"Write buffer to file failed");
+			return FALSE;
+		}
 	}
 
 	return TRUE;
