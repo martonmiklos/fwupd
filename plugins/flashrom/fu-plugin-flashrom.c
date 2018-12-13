@@ -68,6 +68,24 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 		return FALSE;
 	}
 
+	if (flashrom_programmer_init(&(data->flashprog), "internal", NULL)) {
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Programmer initialization failed");
+		return FALSE;
+	}
+
+	if (flashrom_flash_probe(&(data->flashctx), data->flashprog, NULL)) {
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Flash probe failed");
+		return FALSE;
+	}
+
+	flash_size = flashrom_flash_getsize(data->flashctx);
+
 	/* TODO: callback_implementation */
 	//flashrom_set_log_callback((flashrom_log_callback *)&flashrom_print_cb);
 
@@ -165,23 +183,6 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 	if (!fu_common_mkdir_parent (firmware_orig, error))
 		return FALSE;
 	if (!g_file_test (firmware_orig, G_FILE_TEST_EXISTS)) {
-		if (flashrom_programmer_init(&(data->flashprog), "internal", NULL)) {
-			g_set_error (error,
-				FWUPD_ERROR,
-				FWUPD_ERROR_NOT_SUPPORTED,
-				"Programmer initialization failed");
-			return FALSE;
-		}
-
-		if (flashrom_flash_probe(&(data->flashctx), data->flashprog, NULL)) {
-			g_set_error (error,
-				FWUPD_ERROR,
-				FWUPD_ERROR_NOT_SUPPORTED,
-				"Flash probe failed");
-			return FALSE;
-		}
-
-		flash_size = flashrom_flash_getsize(data->flashctx);
 		newcontents = g_malloc(flash_size);
 
 		// TODO: callback implementation
@@ -220,22 +221,6 @@ fu_plugin_update (FuPlugin *plugin,
 	if (!fu_common_set_contents_bytes (firmware_fn, blob_fw, error))
 		return FALSE;
 
-	if (flashrom_programmer_init(&(data->flashprog), "internal", NULL)) {
-		g_set_error (error,
-			FWUPD_ERROR,
-			FWUPD_ERROR_NOT_SUPPORTED,
-			"Programmer initialization failed");
-		return FALSE;
-	}
-
-	if (flashrom_flash_probe(&(data->flashctx), data->flashprog, NULL)) {
-		g_set_error (error,
-			FWUPD_ERROR,
-			FWUPD_ERROR_NOT_SUPPORTED,
-			"Flash probe failed");
-		return FALSE;
-	}
-
 	flashrom_flag_set(data->flashctx, FLASHROM_FLAG_VERIFY_AFTER_WRITE, TRUE);
 
 	if (flashrom_layout_read_from_ifd(&(data->layout), data->flashctx, NULL, 0)) {
@@ -256,8 +241,6 @@ fu_plugin_update (FuPlugin *plugin,
 	}
 
 	flashrom_layout_set(data->flashctx, data->layout);
-
-	flash_size = flashrom_flash_getsize(data->flashctx);
 	newcontents = g_malloc(flash_size);
 
 	if (read_buf_from_file(newcontents, flash_size, firmware_fn)) {
