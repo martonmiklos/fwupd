@@ -59,7 +59,10 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 	/* we need flashrom from the host system */
 	data->flashrom_fn = fu_common_find_program_in_path ("flashrom", &error_local);
 	if (flashrom_init(SELFCHECK_TRUE)) {
-		g_error ("Flashrom initialization error");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Flashrom initialization error");
 		return FALSE;
 	}
 
@@ -159,25 +162,36 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 		return FALSE;
 	if (!g_file_test (firmware_orig, G_FILE_TEST_EXISTS)) {
 		if (flashrom_programmer_init(&flashprog, "internal", NULL)) {
-			g_error ("Error: Programmer initialization failed.");
+			g_set_error (error,
+				FWUPD_ERROR,
+				FWUPD_ERROR_NOT_SUPPORTED,
+				"Programmer initialization failed");
 			return FALSE;
 		}
 
 		if (flashrom_flash_probe(&flashctx, flashprog, NULL)) {
-			g_error ("Error: Flash probe failed.");
+			g_set_error (error,
+				FWUPD_ERROR,
+				FWUPD_ERROR_NOT_SUPPORTED,
+				"Flash probe failed");
 			return FALSE;
 		}
 		const size_t flash_size = flashrom_flash_getsize(flashctx);
 		uint8_t *newcontents = malloc(flash_size);
 		if (!newcontents) {
-			g_error ("Error: Out of memory.");
+			g_set_error (error,
+				FWUPD_ERROR,
+				FWUPD_ERROR_NOT_SUPPORTED,
+				"Out of memory");
 			return FALSE;
 		}
 
 		// TODO: callback implementation
 		if(flashrom_image_read(flashctx, newcontents, flash_size)) {
-			//g_prefix_error (error, "failed to get original firmware: ");
-			g_error ("Failed to get original firmware.");
+			g_set_error (error,
+				FWUPD_ERROR,
+				FWUPD_ERROR_READ,
+				"Failed to get original firmware");
 			return FALSE;
 		}
 		write_buf_to_file(newcontents, flash_size, firmware_orig);
@@ -207,25 +221,37 @@ fu_plugin_update (FuPlugin *plugin,
 		return FALSE;
 
 	if (flashrom_programmer_init(&flashprog, "internal", NULL)) {
-		g_error ("Error: Programmer initialization failed.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Programmer initialization failed");
 		return FALSE;
 	}
 
 	if (flashrom_flash_probe(&flashctx, flashprog, NULL)) {
-		g_error ("Error: Flash probe failed.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Flash probe failed");
 		return FALSE;
 	}
 
 	flashrom_flag_set(flashctx, FLASHROM_FLAG_VERIFY_AFTER_WRITE, TRUE);
 
 	if (flashrom_layout_read_from_ifd(&layout, flashctx, NULL, 0)) {
-		g_error ("Error: Reading layout from Intel ICH descriptor failed.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_READ,
+			"Reading layout from Intel ICH descriptor failed");
 		return FALSE;
 	}
 
 	/* Include bios region for safety reasons */
 	if (flashrom_layout_include_region(layout, "bios")) {
-		g_error ("Error: Invalid region name.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Invalid region name");
 		return FALSE;
 	}
 
@@ -235,7 +261,10 @@ fu_plugin_update (FuPlugin *plugin,
 
 	uint8_t *newcontents = malloc(flash_size);
 	if (!newcontents) {
-		g_error ("Error: Out of memory.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_NOT_SUPPORTED,
+			"Out of memory");
 		return FALSE;
 	}
 
@@ -245,7 +274,10 @@ fu_plugin_update (FuPlugin *plugin,
 	}
 
 	if (flashrom_image_write(flashctx, newcontents, flash_size, NULL)) {
-		g_error ("Error: Image write failed.");
+		g_set_error (error,
+			FWUPD_ERROR,
+			FWUPD_ERROR_WRITE,
+			"Image write failed");
 		return FALSE;
 	}
 
