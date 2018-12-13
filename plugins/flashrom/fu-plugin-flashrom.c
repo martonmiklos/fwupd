@@ -30,10 +30,10 @@
 
 struct FuPluginData {
 	gchar			*flashrom_fn;
-	gsize			flash_size = NULL;
-	static struct flashrom_flashctx *flashctx = NULL;
-	static struct flashrom_layout *layout = NULL;
-	static struct flashrom_programmer *flashprog = NULL;
+	gsize			flash_size;
+	struct flashrom_flashctx *flashctx;
+	struct flashrom_layout *layout;
+	struct flashrom_programmer *flashprog;
 };
 
 void
@@ -194,7 +194,7 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 			return FALSE;
 		}
 
-		if (write_buf_to_file (newcontents, data->flash_size, firmware_orig) {
+		if (write_buf_to_file (newcontents, data->flash_size, firmware_orig)) {
 			g_set_error (error,
 				FWUPD_ERROR,
 				FWUPD_ERROR_NOT_SUPPORTED,
