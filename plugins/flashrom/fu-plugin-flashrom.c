@@ -47,9 +47,9 @@ fu_plugin_destroy (FuPlugin *plugin)
 {
 	FuPluginData *data = fu_plugin_get_data (plugin);
 	g_free (data->flashrom_fn);
-	flashrom_layout_release(data->layout);
-	flashrom_programmer_shutdown(data->flashprog);
-	flashrom_flash_release(data->flashctx);
+	flashrom_layout_release (data->layout);
+	flashrom_programmer_shutdown (data->flashprog);
+	flashrom_flash_release (data->flashctx);
 }
 
 gboolean
@@ -61,7 +61,7 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 
 	/* we need flashrom from the host system */
 	data->flashrom_fn = fu_common_find_program_in_path ("flashrom", &error_local);
-	if (flashrom_init(SELFCHECK_TRUE)) {
+	if (flashrom_init (SELFCHECK_TRUE)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_NOT_SUPPORTED,
@@ -69,7 +69,7 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 		return FALSE;
 	}
 
-	if (flashrom_programmer_init(&(data->flashprog), "internal", NULL)) {
+	if (flashrom_programmer_init (&(data->flashprog), "internal", NULL)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_NOT_SUPPORTED,
@@ -77,7 +77,7 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 		return FALSE;
 	}
 
-	if (flashrom_flash_probe(&(data->flashctx), data->flashprog, NULL)) {
+	if (flashrom_flash_probe (&(data->flashctx), data->flashprog, NULL)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_NOT_SUPPORTED,
@@ -85,10 +85,10 @@ fu_plugin_startup (FuPlugin *plugin, GError **error)
 		return FALSE;
 	}
 
-	data->flash_size = flashrom_flash_getsize(data->flashctx);
+	data->flash_size = flashrom_flash_getsize (data->flashctx);
 
 	/* TODO: callback_implementation */
-	//flashrom_set_log_callback((flashrom_log_callback *)&flashrom_print_cb);
+	//flashrom_set_log_callback ((flashrom_log_callback *) &flashrom_print_cb);
 
 	/* search for devices */
 	hwids = fu_plugin_get_hwids (plugin);
@@ -183,10 +183,10 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 	if (!fu_common_mkdir_parent (firmware_orig, error))
 		return FALSE;
 	if (!g_file_test (firmware_orig, G_FILE_TEST_EXISTS)) {
-		newcontents = g_malloc(data->flash_size);
+		newcontents = g_malloc (data->flash_size);
 
 		// TODO: callback implementation
-		if(flashrom_image_read(data->flashctx, newcontents, data->flash_size)) {
+		if (flashrom_image_read (data->flashctx, newcontents, data->flash_size)) {
 			g_set_error (error,
 				FWUPD_ERROR,
 				FWUPD_ERROR_READ,
@@ -194,7 +194,7 @@ fu_plugin_update_prepare (FuPlugin *plugin,
 			return FALSE;
 		}
 
-		if (write_buf_to_file(newcontents, data->flash_size, firmware_orig) {
+		if (write_buf_to_file (newcontents, data->flash_size, firmware_orig) {
 			g_set_error (error,
 				FWUPD_ERROR,
 				FWUPD_ERROR_NOT_SUPPORTED,
@@ -226,9 +226,9 @@ fu_plugin_update (FuPlugin *plugin,
 	if (!fu_common_set_contents_bytes (firmware_fn, blob_fw, error))
 		return FALSE;
 
-	flashrom_flag_set(data->flashctx, FLASHROM_FLAG_VERIFY_AFTER_WRITE, TRUE);
+	flashrom_flag_set (data->flashctx, FLASHROM_FLAG_VERIFY_AFTER_WRITE, TRUE);
 
-	if (flashrom_layout_read_from_ifd(&(data->layout), data->flashctx, NULL, 0)) {
+	if (flashrom_layout_read_from_ifd (&(data->layout), data->flashctx, NULL, 0)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_READ,
@@ -237,7 +237,7 @@ fu_plugin_update (FuPlugin *plugin,
 	}
 
 	/* Include bios region for safety reasons */
-	if (flashrom_layout_include_region(data->layout, "bios")) {
+	if (flashrom_layout_include_region (data->layout, "bios")) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_NOT_SUPPORTED,
@@ -245,10 +245,10 @@ fu_plugin_update (FuPlugin *plugin,
 		return FALSE;
 	}
 
-	flashrom_layout_set(data->flashctx, data->layout);
-	newcontents = g_malloc(data->flash_size);
+	flashrom_layout_set (data->flashctx, data->layout);
+	newcontents = g_malloc (data->flash_size);
 
-	if (read_buf_from_file(newcontents, data->flash_size, firmware_fn)) {
+	if (read_buf_from_file (newcontents, data->flash_size, firmware_fn)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_NOT_SUPPORTED,
@@ -256,7 +256,7 @@ fu_plugin_update (FuPlugin *plugin,
 		return FALSE;
 	}
 
-	if (flashrom_image_write(data->flashctx, newcontents, data->flash_size, NULL)) {
+	if (flashrom_image_write (data->flashctx, newcontents, data->flash_size, NULL)) {
 		g_set_error (error,
 			FWUPD_ERROR,
 			FWUPD_ERROR_WRITE,
