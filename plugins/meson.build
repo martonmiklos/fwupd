@@ -2,7 +2,6 @@ subdir('dfu')
 subdir('colorhug')
 subdir('ebitdo')
 subdir('fastboot')
-subdir('flashrom')
 subdir('steelseries')
 subdir('dell-dock')
 subdir('nitrokey')
@@ -50,4 +49,8 @@ endif
 
 if get_option('plugin_uefi')
 subdir('uefi')
+endif
+
+if get_option('plugin_flashrom')
+subdir('flashrom')
 endif
